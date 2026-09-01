@@ -1,0 +1,10 @@
+drop index if exists parts_canonical_name_trgm_idx;
+drop index if exists parts_aliases_trgm_idx;
+drop function if exists public.aliases_text(text[]);
+drop index if exists inventory_part_idx;
+drop index if exists inventory_shop_idx;
+drop index if exists transactions_seller_created_idx;
+drop index if exists transactions_buyer_created_idx;
+drop index if exists transactions_order_idx;
+drop index if exists transactions_payment_link_idx;
+drop index if exists transactions_status_hold_idx;

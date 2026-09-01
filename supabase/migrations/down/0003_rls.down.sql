@@ -1,0 +1,12 @@
+drop policy if exists transactions_insert_own on transactions;
+drop policy if exists transactions_read_own on transactions;
+drop policy if exists inventory_write_own on inventory;
+drop policy if exists inventory_read_all on inventory;
+drop policy if exists shops_update_own on shops;
+drop policy if exists shops_read_all on shops;
+drop policy if exists parts_read_all on parts;
+alter table transactions disable row level security;
+alter table inventory    disable row level security;
+alter table parts        disable row level security;
+alter table shops        disable row level security;
+drop function if exists public.current_shop_id();
