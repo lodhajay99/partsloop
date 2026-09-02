@@ -77,8 +77,17 @@ Open the deployment URL. You should see the shop picker with six Pune shops.
 - **New bill** → tap two parts → **Pay through Razorpay** → a real QR appears.
   Pay it with test card `4111 1111 1111 1111`, any future expiry, any CVV.
 
-If the shop picker says *"Could not load shops"*, the Supabase URL or service-role key is
-wrong or missing.
+### If you see "PartLoop needs a database"
+
+The deploy worked — the app just has no Supabase credentials yet. **There is no
+`.env.local` on Vercel**; that file is local-only and must never be committed. Add
+`NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` under Settings → Environment
+Variables, then **redeploy** — env vars are read at build and boot, so an existing
+deployment will not pick them up.
+
+If the shop picker instead says *"Could not load shops"*, the credentials arrived but the
+schema has not been loaded — run `npm run db:bundle` and paste `supabase/bundle.sql` into
+the Supabase SQL editor.
 
 ---
 
