@@ -16,9 +16,11 @@ import type { PartMatch } from '@/types/db';
 export function InventoryClient({
   lines,
   lowStockThreshold,
+  categories,
 }: {
   lines: InventoryLine[];
   lowStockThreshold: number;
+  categories: string[];
 }) {
   const [filter, setFilter] = useState('');
 
@@ -35,7 +37,10 @@ export function InventoryClient({
 
   return (
     <div className="space-y-5">
-      <AddPartPanel existingPartIds={new Set(lines.map((l) => l.part_id))} />
+      <AddPartPanel
+        existingPartIds={new Set(lines.map((l) => l.part_id))}
+        categories={categories}
+      />
 
       <div className="relative max-w-sm">
         <Search
@@ -188,7 +193,13 @@ function InventoryRow({
   );
 }
 
-function AddPartPanel({ existingPartIds }: { existingPartIds: Set<string> }) {
+function AddPartPanel({
+  existingPartIds,
+  categories,
+}: {
+  existingPartIds: Set<string>;
+  categories: string[];
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -197,6 +208,9 @@ function AddPartPanel({ existingPartIds }: { existingPartIds: Set<string> }) {
   const [quantity, setQuantity] = useState('1');
   const [price, setPrice] = useState('');
   const [saving, setSaving] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newCategory, setNewCategory] = useState('other');
   const seq = useRef(0);
 
   useEffect(() => {
@@ -206,12 +220,16 @@ function AddPartPanel({ existingPartIds }: { existingPartIds: Set<string> }) {
 
     const handle = setTimeout(async () => {
       const mine = ++seq.current;
+      setSearching(true);
       try {
         const res = await fetch(`/api/catalog/search?q=${encodeURIComponent(trimmed)}`);
         const body = (await res.json()) as { parts?: PartMatch[] };
         if (mine === seq.current) setMatches(body.parts ?? []);
       } catch {
         // A failed lookup just means no suggestions; the toast noise is not worth it.
+        if (mine === seq.current) setMatches([]);
+      } finally {
+        if (mine === seq.current) setSearching(false);
       }
     }, 250);
 
@@ -221,6 +239,33 @@ function AddPartPanel({ existingPartIds }: { existingPartIds: Set<string> }) {
   // Derived rather than cleared in the effect: an empty box shows no
   // suggestions without a second render pass.
   const suggestions = query.trim() ? matches : [];
+
+  // The catalog ships with a fixed set of parts, so anything a shop stocks that
+  // is not already listed used to be a dead end: empty results and no way
+  // forward. This adds it to the shared catalog, then falls into the normal
+  // quantity/price step.
+  const createAndSelect = useCallback(async () => {
+    const name = query.trim();
+    if (!name) return;
+
+    setCreating(true);
+    try {
+      const res = await fetch('/api/catalog/parts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, category: newCategory, searched_for: name }),
+      });
+      const body = (await res.json()) as { part?: PartMatch; note?: string; error?: string };
+      if (!res.ok || !body.part) throw new Error(body.error ?? 'Could not create the part.');
+
+      toast.success(`"${body.part.canonical_name}" ready`, { description: body.note });
+      setSelected(body.part);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not create the part.');
+    } finally {
+      setCreating(false);
+    }
+  }, [query, newCategory]);
 
   const add = useCallback(async () => {
     if (!selected) return;
@@ -243,6 +288,7 @@ function AddPartPanel({ existingPartIds }: { existingPartIds: Set<string> }) {
       setQuery('');
       setPrice('');
       setQuantity('1');
+      setNewCategory('other');
       setOpen(false);
       router.refresh();
     } catch (err) {
@@ -316,7 +362,7 @@ function AddPartPanel({ existingPartIds }: { existingPartIds: Set<string> }) {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search the catalog — try 'swift brek ped'"
+            placeholder="Search the catalog, or type a new part name"
             autoFocus
           />
           {suggestions.length > 0 ? (
@@ -346,6 +392,55 @@ function AddPartPanel({ existingPartIds }: { existingPartIds: Set<string> }) {
               })}
             </ul>
           ) : null}
+          {query.trim() && !searching ? (
+            <div className="space-y-3 rounded-md border border-dashed p-4">
+              {/* Shown even when there ARE matches. Search is fuzzy by design, so
+                  "Thar front bumper guard" happily returns "Baleno front bumper" —
+                  offering this only on an empty list leaves the shopkeeper picking
+                  a wrong part or giving up. */}
+              <p className="text-sm text-muted-foreground">
+                {suggestions.length > 0 ? (
+                  <>
+                    None of these the right part? Add{' '}
+                    <span className="font-medium text-foreground">&ldquo;{query.trim()}&rdquo;</span>{' '}
+                    to the catalog instead.
+                  </>
+                ) : (
+                  <>
+                    Nothing in the catalog matches{' '}
+                    <span className="font-medium text-foreground">&ldquo;{query.trim()}&rdquo;</span>.
+                    Add it so you — and shops searching nearby — can find it.
+                  </>
+                )}
+              </p>
+
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <Label htmlFor="new-part-category" className="text-xs text-muted-foreground">
+                    Category
+                  </Label>
+                  <select
+                    id="new-part-category"
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                    className="mt-1 h-8 rounded-md border border-input bg-background px-2 text-sm"
+                  >
+                    {[...new Set([...categories, 'other'])].map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <Button onClick={() => void createAndSelect()} disabled={creating}>
+                  {creating ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
+                  Add &ldquo;{query.trim().slice(0, 32)}&rdquo; as a new part
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
         </>
       )}
     </div>

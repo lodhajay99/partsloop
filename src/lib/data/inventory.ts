@@ -116,6 +116,81 @@ export async function searchCatalog(query: string, limit = 12): Promise<PartMatc
   return (data ?? []) as PartMatch[];
 }
 
+/** The categories already in use, for the "new part" picker. */
+export async function listPartCategories(): Promise<string[]> {
+  const { data } = await supabaseAdmin().from('parts').select('category');
+  const seen = new Set<string>();
+  for (const row of (data ?? []) as Array<{ category: string }>) {
+    if (row.category) seen.add(row.category);
+  }
+  return [...seen].sort();
+}
+
+/**
+ * Adds a part to the shared catalog.
+ *
+ * The catalog is shared by every shop, so a careless insert pollutes search for
+ * all of them — "Bosch H4 bulb" and "bosch h4 bulb" as two rows means a buyer
+ * finds half the stock that exists. So an existing part with the same name
+ * (case- and space-insensitive) is returned instead of creating a second one,
+ * and the phrase the shopkeeper actually typed is kept as an alias so the next
+ * person searching those words finds it.
+ */
+export async function createPart(input: {
+  name: string;
+  category?: string;
+  /** What the user typed to find it, kept as a search alias. */
+  searchedFor?: string;
+}): Promise<{ part: PartMatch; created: boolean }> {
+  const db = supabaseAdmin();
+
+  const name = input.name.trim().replace(/\s+/g, ' ');
+  if (name.length < 3) throw new Error('Give the part a name of at least 3 characters.');
+  if (name.length > 120) throw new Error('That name is too long for a part.');
+
+  const category = (input.category ?? 'other').trim().toLowerCase() || 'other';
+
+  const alias = input.searchedFor?.trim().replace(/\s+/g, ' ').toLowerCase();
+  const aliases = alias && alias !== name.toLowerCase() ? [alias] : [];
+
+  // Case-insensitive duplicate check before inserting.
+  const { data: existingRows } = await db
+    .from('parts')
+    .select('id, canonical_name, aliases, category')
+    .ilike('canonical_name', name);
+
+  const existing = (existingRows ?? []) as Array<{
+    id: string;
+    canonical_name: string;
+    aliases: string[];
+    category: string;
+  }>;
+
+  if (existing.length > 0) {
+    const hit = existing[0];
+    // Fold the new phrasing in, so the catalog gets better rather than duplicated.
+    const merged = [...new Set([...(hit.aliases ?? []), ...aliases])];
+    if (merged.length !== (hit.aliases ?? []).length) {
+      await db.from('parts').update({ aliases: merged }).eq('id', hit.id);
+    }
+    return {
+      part: { ...hit, aliases: merged, match_score: 1 },
+      created: false,
+    };
+  }
+
+  const { data, error } = await db
+    .from('parts')
+    .insert({ canonical_name: name, category, aliases })
+    .select('id, canonical_name, aliases, category')
+    .single();
+
+  if (error) throw new Error(`Could not add the part to the catalog: ${error.message}`);
+
+  const row = data as { id: string; canonical_name: string; aliases: string[]; category: string };
+  return { part: { ...row, match_score: 1 }, created: true };
+}
+
 export async function getInventoryLine(shopId: string, partId: string): Promise<InventoryLine | null> {
   const { data } = await supabaseAdmin()
     .from('inventory')

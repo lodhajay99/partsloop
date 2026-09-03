@@ -1,7 +1,7 @@
 import { InventoryClient } from '@/components/inventory/inventory-client';
 import { requireSessionShop } from '@/lib/auth/session';
 import { LOW_STOCK_THRESHOLD } from '@/lib/data/dashboard';
-import { getShopInventory } from '@/lib/data/inventory';
+import { getShopInventory, listPartCategories } from '@/lib/data/inventory';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +9,10 @@ export const metadata = { title: 'My stock · PartLoop' };
 
 export default async function InventoryPage() {
   const shop = await requireSessionShop();
-  const lines = await getShopInventory(shop.id);
+  const [lines, categories] = await Promise.all([
+    getShopInventory(shop.id),
+    listPartCategories(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -22,7 +25,11 @@ export default async function InventoryPage() {
         </p>
       </header>
 
-      <InventoryClient lines={lines} lowStockThreshold={LOW_STOCK_THRESHOLD} />
+      <InventoryClient
+        lines={lines}
+        lowStockThreshold={LOW_STOCK_THRESHOLD}
+        categories={categories}
+      />
     </div>
   );
 }
