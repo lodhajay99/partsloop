@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { MapPin, Repeat2 } from 'lucide-react';
 
-import { ActivityNotifier } from '@/components/activity-notifier';
+import { ActivityNotifier, AlertToggle } from '@/components/activity-notifier';
 import { AppNav } from '@/components/app-nav';
 import { ModeChip } from '@/components/integration-banner';
 import { SetupRequired } from '@/components/setup-required';
@@ -29,6 +29,7 @@ export default async function AppLayout({ children }: LayoutProps<'/'>) {
 
           <div className="ml-auto flex items-center gap-3">
             <ModeChip />
+            <AlertToggle />
             <Link
               href="/login"
               className="group flex items-center gap-2 rounded-md border px-3 py-1.5 text-left transition-colors hover:bg-accent"
