@@ -72,6 +72,17 @@ export default async function TransactionPage({ params }: PageProps<'/transactio
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={tx.status} />
             {tx.is_seed ? <SeedBadge /> : tx.simulated ? <SimulatedBadge /> : null}
+            {isInterShop ? (
+              <span
+                className={
+                  role === 'buyer'
+                    ? 'rounded-full bg-info-soft px-2 py-0.5 text-xs font-medium text-info'
+                    : 'rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-success'
+                }
+              >
+                {role === 'buyer' ? 'You are buying' : 'You are selling'}
+              </span>
+            ) : null}
             <span className="text-xs text-muted-foreground">
               {isInterShop ? 'Shop-to-shop purchase' : 'Counter sale'} · created {dateTime(tx.created_at)}
             </span>
@@ -113,6 +124,15 @@ export default async function TransactionPage({ params }: PageProps<'/transactio
           Held for you for another{' '}
           <span className="font-semibold">{minutesUntil(tx.hold_until)} minutes</span>. After that the
           reservation expires and the stock goes back to the open pool.
+        </p>
+      ) : null}
+
+      {isInterShop && role === 'seller' && (tx.status === 'paid' || tx.status === 'on_hold') ? (
+        <p className="rounded-lg border border-info/25 bg-info-soft px-4 py-3 text-sm">
+          The money is in, and your share is held by Razorpay until{' '}
+          <span className="font-semibold">{tx.buyer_name ?? 'the buyer'}</span> confirms they have the
+          part. Only they can release it — that is what the hold is for, so hand it over and the
+          release follows.
         </p>
       ) : null}
 

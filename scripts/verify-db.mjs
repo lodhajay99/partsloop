@@ -421,6 +421,32 @@ await processingFeeChecks({ db, check, rejects, shopA });
 await declineChecks({ db, check, shopA, otherShop });
 
 // ---------------------------------------------------------------------------
+// Who may release the settlement hold
+//
+// The hold exists so the buyer's money is not handed to the seller before the
+// part is. A seller who could release it themselves would defeat the entire
+// mechanism, and neither guard is reachable from SQL, so assert both are still
+// in the source: the server rule, and the button that must never be offered to
+// the wrong side.
+// ---------------------------------------------------------------------------
+console.log('\nRelease authorisation:');
+
+const fulfilmentSrc = readFileSync(join(here, '..', 'src', 'lib', 'data', 'fulfilment.ts'), 'utf8');
+check(
+  'releaseHold refuses any shop that is not the buyer',
+  /if\s*\(tx\.buyer_shop_id\s*!==\s*actingShopId\)\s*\{[\s\S]{0,120}?throw/.test(fulfilmentSrc),
+);
+
+const actionsSrc = readFileSync(
+  join(here, '..', 'src', 'components', 'transactions', 'transaction-actions.tsx'),
+  'utf8',
+);
+check(
+  'the release button is gated on the acting shop being the buyer',
+  /const canRelease\s*=\s*isBuyer\s*&&/.test(actionsSrc),
+);
+
+// ---------------------------------------------------------------------------
 // PostgREST foreign-key hints used by the app
 //
 // src/lib/data/*.ts embeds related rows with `part:parts!<constraint>(...)`.
