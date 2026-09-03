@@ -17,13 +17,34 @@ import type { AvailabilityRow, SearchResult, Shop, TransactionStatus } from '@/t
  * unreserved rows never leave the process — the browser cannot un-hide them.
  */
 
-/** A reservation in one of these states reveals the seller to the buyer. */
+/**
+ * A reservation in one of these states reveals the seller to the buyer, and
+ * keeps them revealed. Once you have bought from a shop and collected the part
+ * you know perfectly well who they are; re-hiding them behind "Shop D" would be
+ * theatre.
+ */
 const REVEALING_STATUSES: ReadonlySet<TransactionStatus> = new Set([
   'reserved',
   'paid',
   'on_hold',
   'released',
   'completed',
+]);
+
+/**
+ * A reservation still in flight — the only kind there is anything to open.
+ *
+ * Deliberately narrower than REVEALING_STATUSES. A finished trade left the row
+ * offering "Open reservation" forever, so a shop that had bought a part once
+ * could never buy it there again: the button pointed back at a settled
+ * transaction instead of starting a new one. Reserving again was always allowed
+ * underneath (createReservation only reuses these same live statuses) — search
+ * was simply refusing to offer it.
+ */
+const LIVE_RESERVATION_STATUSES: ReadonlySet<TransactionStatus> = new Set([
+  'reserved',
+  'paid',
+  'on_hold',
 ]);
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -93,6 +114,7 @@ export async function searchAvailability(input: {
   const results: SearchResult[] = rows.map((row) => {
     const reservation = reservations.get(`${row.shop_id}:${row.part_id}`);
     const revealed = Boolean(reservation && REVEALING_STATUSES.has(reservation.status));
+    const live = Boolean(reservation && LIVE_RESERVATION_STATUSES.has(reservation.status));
     const jittered = approximateLocation(row.shop_id, row.shop_lat, row.shop_lng);
 
     return {
@@ -112,11 +134,11 @@ export async function searchAvailability(input: {
       shop_address: revealed ? row.shop_address : null,
       lat: revealed ? row.shop_lat : jittered.lat,
       lng: revealed ? row.shop_lng : jittered.lng,
-      // Only a live reservation is surfaced. A declined or expired one must not
-      // leave the row stuck showing "Open reservation" — the whole point of
-      // declining is that the part goes back into open search.
-      reservation_id: revealed ? (reservation?.id ?? null) : null,
-      reservation_status: revealed ? (reservation?.status ?? null) : null,
+      // Only a live reservation is surfaced. A settled, declined or expired one
+      // must not leave the row stuck showing "Open reservation" — the part is
+      // back in open search and buying it again has to be one tap away.
+      reservation_id: live ? (reservation?.id ?? null) : null,
+      reservation_status: live ? (reservation?.status ?? null) : null,
     };
   });
 

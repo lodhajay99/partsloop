@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { MapPin, Repeat2 } from 'lucide-react';
 
+import { ActivityNotifier } from '@/components/activity-notifier';
 import { AppNav } from '@/components/app-nav';
 import { ModeChip } from '@/components/integration-banner';
 import { SetupRequired } from '@/components/setup-required';
@@ -14,6 +15,7 @@ export default async function AppLayout({ children }: LayoutProps<'/'>) {
 
   return (
     <div className="flex min-h-svh flex-col">
+      <ActivityNotifier />
       <header className="sticky top-0 z-20 border-b bg-background/85 backdrop-blur">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-6">
           <Link href="/dashboard" className="flex items-center gap-2">

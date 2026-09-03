@@ -447,6 +447,30 @@ check(
 );
 
 // ---------------------------------------------------------------------------
+// A settled trade returns the row to open search
+//
+// Search reveals a seller for longer than a reservation stays live: once you
+// have bought from a shop you keep seeing its name. Those two windows must not
+// be the same set, or a finished trade leaves the row offering "Open
+// reservation" forever and the part can never be bought there again.
+// ---------------------------------------------------------------------------
+console.log('\nSettled trades return to open search:');
+
+const searchSrc = readFileSync(join(here, '..', 'src', 'lib', 'data', 'search.ts'), 'utf8');
+const liveBlock = searchSrc.match(/LIVE_RESERVATION_STATUSES[^=]*=\s*new Set\(\[([^\]]*)\]/);
+
+check('search defines a live-reservation set distinct from the revealing one', Boolean(liveBlock));
+check(
+  'a released or completed trade is not treated as a live reservation',
+  Boolean(liveBlock) && !/released|completed/.test(liveBlock[1]),
+  liveBlock ? liveBlock[1].replace(/\s+/g, ' ').trim() : 'not found',
+);
+check(
+  'the reservation surfaced to search is gated on it being live',
+  /reservation_id:\s*live\s*\?/.test(searchSrc),
+);
+
+// ---------------------------------------------------------------------------
 // PostgREST foreign-key hints used by the app
 //
 // src/lib/data/*.ts embeds related rows with `part:parts!<constraint>(...)`.

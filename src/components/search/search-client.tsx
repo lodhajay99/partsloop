@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { Clock, EyeOff, Loader2, MapPin, Package, Search } from 'lucide-react';
+import { Clock, EyeOff, History, Loader2, MapPin, Package, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -222,7 +222,7 @@ function ResultCard({
     <div
       className={cn(
         'flex flex-wrap items-center gap-x-5 gap-y-3 rounded-lg border p-3.5 transition-colors sm:flex-nowrap',
-        row.revealed ? 'border-brand/35 bg-brand-soft/40' : 'bg-card hover:bg-accent/30',
+        row.reservation_id ? 'border-brand/35 bg-brand-soft/40' : 'bg-card hover:bg-accent/30',
       )}
     >
       <div className="min-w-0 flex-1">
@@ -237,6 +237,11 @@ function ResultCard({
             <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
               <EyeOff className="size-3" aria-hidden />
               hidden
+            </span>
+          ) : !row.reservation_id ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+              <History className="size-3" aria-hidden />
+              bought here before
             </span>
           ) : null}
         </div>
