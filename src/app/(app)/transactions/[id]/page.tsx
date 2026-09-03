@@ -2,11 +2,12 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import QRCode from 'qrcode';
-import { ArrowLeft, MapPin, Phone, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Ban, MapPin, Phone, ShieldCheck } from 'lucide-react';
 
 import { SeedBadge, SimulatedBadge, StatusBadge } from '@/components/status-badge';
 import { PaymentTimeline } from '@/components/transactions/payment-timeline';
 import { RazorpayRefs } from '@/components/transactions/razorpay-refs';
+import { CancelReservationButton } from '@/components/transactions/cancel-reservation-button';
 import { TransactionActions } from '@/components/transactions/transaction-actions';
 import { requireSessionShop } from '@/lib/auth/session';
 import { expireStaleReservations } from '@/lib/data/fulfilment';
@@ -91,6 +92,22 @@ export default async function TransactionPage({ params }: PageProps<'/transactio
         </p>
       </header>
 
+      {tx.status === 'cancelled' ? (
+        <section className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
+          <Ban className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
+          <p className="text-foreground/80">
+            <span className="font-semibold text-destructive">
+              {tx.cancelled_by_shop_id === tx.seller_shop_id
+                ? `${tx.seller_name} declined this reservation`
+                : 'This reservation was cancelled by the buyer'}
+            </span>
+            {tx.cancelled_at ? ` on ${dateTime(tx.cancelled_at)}` : ''}
+            {tx.cancel_reason ? ` — ${tx.cancel_reason}` : '.'} Nothing was charged, and the part is
+            back in open search.
+          </p>
+        </section>
+      ) : null}
+
       {tx.status === 'reserved' && tx.hold_until ? (
         <p className="rounded-lg border border-info/25 bg-info-soft px-4 py-3 text-sm">
           Held for you for another{' '}
@@ -109,14 +126,24 @@ export default async function TransactionPage({ params }: PageProps<'/transactio
         </p>
       ) : null}
 
-      <TransactionActions
-        transactionId={tx.id}
-        type={tx.type}
-        status={tx.status}
-        role={role}
-        paymentUrl={tx.razorpay_payment_link_url}
-        simulatedMode={isSimulated()}
-      />
+      <div className="flex flex-wrap items-start gap-2">
+        <TransactionActions
+          transactionId={tx.id}
+          type={tx.type}
+          status={tx.status}
+          role={role}
+          paymentUrl={tx.razorpay_payment_link_url}
+          simulatedMode={isSimulated()}
+        />
+        {isInterShop ? (
+          <CancelReservationButton
+            transactionId={tx.id}
+            status={tx.status}
+            role={role}
+            counterpartyName={role === 'seller' ? (tx.buyer_name ?? 'the buyer') : tx.seller_name}
+          />
+        ) : null}
+      </div>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="space-y-5">

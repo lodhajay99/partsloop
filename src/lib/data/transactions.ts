@@ -174,6 +174,58 @@ export async function createReservation(input: {
 }
 
 /**
+ * Calls off an unpaid reservation, from either side.
+ *
+ * The seller declining is the case this exists for — the part is spoken for, or
+ * the listing was stale — but the buyer changing their mind is the same
+ * operation, so both go through one path and the row records which side did it.
+ *
+ * Nothing to unwind: stock only moves on payment capture, so an unpaid
+ * reservation was never holding any. Anything already paid is refused rather
+ * than silently detached from its captured payment.
+ */
+export async function cancelReservation(input: {
+  transactionId: string;
+  actingShopId: string;
+  reason?: string;
+}): Promise<{
+  transaction: DetailedTransaction;
+  previousStatus: string;
+  cancelledBySeller: boolean;
+  alreadyCancelled: boolean;
+  note: string;
+}> {
+  const { data, error } = await supabaseAdmin().rpc('cancel_reservation', {
+    p_transaction_id: input.transactionId,
+    p_acting_shop_id: input.actingShopId,
+    p_reason: input.reason ?? null,
+  });
+
+  if (error) throw new Error(error.message);
+
+  const row = (Array.isArray(data) ? data[0] : data) as
+    | { previous_status: string; cancelled_by_seller: boolean; already_cancelled: boolean }
+    | undefined;
+
+  const updated = await getTransaction(input.transactionId);
+  if (!updated) throw new Error('The reservation vanished while being cancelled.');
+
+  const bySeller = row?.cancelled_by_seller ?? false;
+
+  return {
+    transaction: updated,
+    previousStatus: row?.previous_status ?? 'reserved',
+    cancelledBySeller: bySeller,
+    alreadyCancelled: row?.already_cancelled ?? false,
+    note: row?.already_cancelled
+      ? 'This reservation was already called off.'
+      : bySeller
+        ? 'Declined. The stock is back in open search for other shops.'
+        : 'Reservation cancelled. Nothing was charged.',
+  };
+}
+
+/**
  * Creates the Razorpay Order and Payment Link for a reservation.
  *
  * The Route split rides on the Payment Link as `options.order.transfers`:

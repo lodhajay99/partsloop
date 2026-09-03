@@ -75,6 +75,10 @@ export interface Transaction {
   hold_until: string | null;
   paid_at: string | null;
   released_at: string | null;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
+  /** Which side called off an unpaid reservation. */
+  cancelled_by_shop_id: string | null;
   created_at: string;
 }
 

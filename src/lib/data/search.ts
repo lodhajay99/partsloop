@@ -112,8 +112,11 @@ export async function searchAvailability(input: {
       shop_address: revealed ? row.shop_address : null,
       lat: revealed ? row.shop_lat : jittered.lat,
       lng: revealed ? row.shop_lng : jittered.lng,
-      reservation_id: reservation?.id ?? null,
-      reservation_status: reservation?.status ?? null,
+      // Only a live reservation is surfaced. A declined or expired one must not
+      // leave the row stuck showing "Open reservation" — the whole point of
+      // declining is that the part goes back into open search.
+      reservation_id: revealed ? (reservation?.id ?? null) : null,
+      reservation_status: revealed ? (reservation?.status ?? null) : null,
     };
   });
 
