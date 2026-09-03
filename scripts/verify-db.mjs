@@ -23,6 +23,7 @@ import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 
 import { billChecks } from './checks/bills.mjs';
+import { cancelChecks } from './checks/cancel.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const migrationsDir = join(here, '..', 'supabase', 'migrations');
@@ -413,6 +414,7 @@ check('a client cannot mark its own purchase paid (no UPDATE grant)', clientSett
   clientSettle.raised ? '' : `${clientSettle.affected} rows would have changed`);
 
 await billChecks({ db, check, rejects, shopA, otherShop });
+await cancelChecks({ db, check, shopA, otherShop });
 
 // ---------------------------------------------------------------------------
 // PostgREST foreign-key hints used by the app

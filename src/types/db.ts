@@ -17,7 +17,10 @@ export type TransactionStatus =
   | 'released'
   | 'completed'
   | 'expired'
-  | 'refunded';
+  /** The sale happened and was reversed. */
+  | 'refunded'
+  /** The sale never happened — the bill was voided before payment. */
+  | 'cancelled';
 
 export interface Shop {
   id: string;
@@ -103,6 +106,10 @@ export interface Bill {
   paid_at: string | null;
   /** Null until the shopkeeper confirms the parts left the counter. */
   stock_deducted_at: string | null;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
+  /** Set when a paid Razorpay bill was reversed through the Refunds API. */
+  razorpay_refund_id: string | null;
   created_at: string;
 }
 

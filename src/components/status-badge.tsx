@@ -11,6 +11,7 @@ const STATUS_META: Record<TransactionStatus, { label: string; className: string 
   completed: { label: 'Completed', className: 'bg-success-soft text-success' },
   expired: { label: 'Expired', className: 'bg-muted text-muted-foreground line-through' },
   refunded: { label: 'Refunded', className: 'bg-destructive/10 text-destructive' },
+  cancelled: { label: 'Cancelled', className: 'bg-muted text-muted-foreground line-through' },
 };
 
 export function StatusBadge({ status, className }: { status: TransactionStatus; className?: string }) {

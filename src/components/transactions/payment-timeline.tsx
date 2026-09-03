@@ -32,6 +32,8 @@ const PROGRESS: Record<TransactionStatus, number> = {
   completed: 4,
   expired: -1,
   refunded: -1,
+  // Reversed or voided: no step on the timeline is 'reached'.
+  cancelled: -1,
 };
 
 export function PaymentTimeline({

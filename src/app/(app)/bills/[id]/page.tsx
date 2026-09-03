@@ -2,9 +2,10 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import QRCode from 'qrcode';
-import { ArrowLeft, Banknote, CheckCircle2, PackageMinus, Smartphone } from 'lucide-react';
+import { ArrowLeft, Ban, Banknote, CheckCircle2, PackageMinus, Smartphone } from 'lucide-react';
 
 import { BillActions } from '@/components/bills/bill-actions';
+import { CancelBillButton } from '@/components/bills/cancel-bill-button';
 import { SeedBadge, SimulatedBadge } from '@/components/status-badge';
 import { RazorpayRefs } from '@/components/transactions/razorpay-refs';
 import { requireSessionShop } from '@/lib/auth/session';
@@ -92,14 +93,37 @@ export default async function BillPage({ params }: PageProps<'/bills/[id]'>) {
         <p className="text-3xl font-semibold tabular-nums">{rupees(bill.total_paise)}</p>
       </header>
 
-      <BillActions
-        billId={bill.id}
-        status={bill.status}
-        stockDeducted={stockDeducted}
-        paymentUrl={bill.razorpay_payment_link_url}
-        paymentMethod={bill.payment_method}
-        simulatedMode={isSimulated()}
-      />
+      <div className="flex flex-wrap items-start gap-2">
+        <BillActions
+          billId={bill.id}
+          status={bill.status}
+          stockDeducted={stockDeducted}
+          paymentUrl={bill.razorpay_payment_link_url}
+          paymentMethod={bill.payment_method}
+          simulatedMode={isSimulated()}
+        />
+        <CancelBillButton
+          billId={bill.id}
+          status={bill.status}
+          paymentMethod={bill.payment_method}
+          totalPaise={bill.total_paise}
+          stockDeducted={stockDeducted}
+        />
+      </div>
+
+      {bill.status === 'cancelled' ? (
+        <section className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
+          <Ban className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
+          <p className="text-foreground/80">
+            <span className="font-semibold text-destructive">Cancelled</span>
+            {bill.cancelled_at ? ` on ${dateTime(bill.cancelled_at)}` : ''}
+            {bill.cancel_reason ? ` — ${bill.cancel_reason}` : '.'}{' '}
+            {bill.razorpay_refund_id
+              ? 'The payment was refunded through Razorpay.'
+              : 'It no longer counts towards your takings.'}
+          </p>
+        </section>
+      ) : null}
 
       {bill.status === 'paid' && !stockDeducted ? (
         <section className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning-soft px-4 py-3 text-sm">
@@ -209,6 +233,7 @@ export default async function BillPage({ params }: PageProps<'/bills/[id]'>) {
                     { label: 'Order', value: bill.razorpay_order_id },
                     { label: 'Payment link', value: bill.razorpay_payment_link_id },
                     { label: 'Payment', value: bill.razorpay_payment_id },
+                    { label: 'Refund', value: bill.razorpay_refund_id },
                   ]}
                 />
                 <p className="mt-3 text-xs text-muted-foreground">
@@ -236,6 +261,12 @@ export default async function BillPage({ params }: PageProps<'/bills/[id]'>) {
                 <div className="flex justify-between gap-3">
                   <dt>Stock cut</dt>
                   <dd>{dateTime(bill.stock_deducted_at)}</dd>
+                </div>
+              ) : null}
+              {bill.cancelled_at ? (
+                <div className="flex justify-between gap-3">
+                  <dt>Cancelled</dt>
+                  <dd>{dateTime(bill.cancelled_at)}</dd>
                 </div>
               ) : null}
             </dl>

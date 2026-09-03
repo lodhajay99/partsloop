@@ -1,6 +1,12 @@
 import 'server-only';
 
-import { appUrl, createOrder, createPaymentLink, isSimulated } from '@/lib/razorpay/client';
+import {
+  appUrl,
+  createOrder,
+  createPaymentLink,
+  isSimulated,
+  refundPayment,
+} from '@/lib/razorpay/client';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import type { Bill, BillLine, BillStatus, DetailedBill, PaymentMethod, Shop } from '@/types/db';
 
@@ -320,6 +326,119 @@ export async function deductBillStock(
   };
 }
 
+/**
+ * Cancels a bill, reversing whatever actually happened.
+ *
+ * What "cancel" means depends entirely on how far the bill got:
+ *
+ *   created  — nobody paid. Void it. Nothing else to undo.
+ *   paid     — money arrived, parts still on the shelf. Return the money.
+ *   stocked  — money arrived and parts left. Return the money AND put the
+ *              parts back.
+ *
+ * The money is returned before the ledger is touched, so a failed refund leaves
+ * the bill standing rather than producing books that claim a reversal that never
+ * reached the customer. For a cash bill there is nothing to call — the shopkeeper
+ * hands the notes back — so it is recorded as a cash refund and flagged as having
+ * no Razorpay record, exactly like the original cash sale.
+ */
+export async function cancelBill(input: {
+  billId: string;
+  shopId: string;
+  reason?: string;
+}): Promise<{
+  bill: DetailedBill;
+  alreadyCancelled: boolean;
+  previousStatus: BillStatus;
+  stockRestored: number;
+  refundId: string | null;
+  note: string;
+}> {
+  const db = supabaseAdmin();
+
+  const existing = await getBill(input.billId);
+  if (!existing) throw new Error('Bill not found.');
+  if (existing.shop_id !== input.shopId) throw new Error('That bill belongs to another shop.');
+
+  if (existing.status === 'cancelled') {
+    return {
+      bill: existing,
+      alreadyCancelled: true,
+      previousStatus: 'cancelled',
+      stockRestored: 0,
+      refundId: existing.razorpay_refund_id,
+      note: 'This bill was already cancelled.',
+    };
+  }
+
+  const wasPaid = existing.status === 'paid' || existing.status === 'stocked';
+  const isCash = existing.payment_method === 'cash';
+
+  // ---- Money first ---------------------------------------------------------
+  let refundId: string | null = null;
+  let refundNote = '';
+
+  if (wasPaid && !isCash) {
+    if (!existing.razorpay_payment_id) {
+      throw new Error(
+        'This bill is marked paid but carries no Razorpay payment id, so the refund cannot be ' +
+          'issued automatically. Refund it from the Razorpay dashboard, then cancel again.',
+      );
+    }
+
+    // A failed refund must abort the cancel: better a bill that is still open
+    // than books saying money went back when it did not.
+    const refund = await refundPayment({
+      paymentId: existing.razorpay_payment_id,
+      amountPaise: existing.total_paise,
+      notes: { partloop_bill_id: existing.id, reason: input.reason ?? 'cancelled at counter' },
+    });
+
+    refundId = refund.id;
+    refundNote = refund._simulated
+      ? ' Refund is simulated — no Razorpay keys configured.'
+      : ` Refunded through Razorpay (${refund.id}).`;
+  } else if (wasPaid && isCash) {
+    refundNote = ' Hand the cash back to the customer — there is no Razorpay record to reverse.';
+  }
+
+  // ---- Then the ledger and the shelf ---------------------------------------
+  const { data, error } = await db.rpc('cancel_bill', {
+    p_bill_id: input.billId,
+    p_shop_id: input.shopId,
+    p_reason: input.reason ?? null,
+  });
+
+  if (error) throw new Error(`Could not cancel the bill: ${error.message}`);
+
+  const row = (Array.isArray(data) ? data[0] : data) as
+    | { restored_lines: number; previous_status: BillStatus; already_cancelled: boolean }
+    | undefined;
+
+  if (refundId) {
+    await db.from('bills').update({ razorpay_refund_id: refundId }).eq('id', input.billId);
+  }
+
+  const updated = await getBill(input.billId);
+  if (!updated) throw new Error('The bill vanished while being cancelled.');
+
+  const restored = row?.restored_lines ?? 0;
+  const stockNote =
+    restored > 0
+      ? ` ${restored} ${restored === 1 ? 'part is' : 'parts are'} back in stock.`
+      : '';
+
+  return {
+    bill: updated,
+    alreadyCancelled: row?.already_cancelled ?? false,
+    previousStatus: row?.previous_status ?? existing.status,
+    stockRestored: restored,
+    refundId,
+    note:
+      (wasPaid ? 'Bill reversed.' : 'Bill voided — it was never paid.') + refundNote + stockNote,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Dashboard board: money taken over the counter
 // ---------------------------------------------------------------------------
@@ -363,6 +482,7 @@ export interface CounterTakings {
   recent: CounterBillSummary[];
 }
 
+/** Cancelled bills are deliberately absent: a reversed sale is not takings. */
 const PAID_BILL_STATUSES: BillStatus[] = ['paid', 'stocked'];
 
 export async function getCounterTakings(

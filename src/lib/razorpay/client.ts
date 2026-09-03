@@ -305,6 +305,50 @@ export async function setTransferHold(
 }
 
 // ---------------------------------------------------------------------------
+// Refunds
+// ---------------------------------------------------------------------------
+
+export interface RazorpayRefund {
+  id: string;
+  payment_id: string;
+  amount: number;
+  status: string;
+  _simulated?: boolean;
+}
+
+/**
+ * Refunds a captured payment in full.
+ *
+ * `speed: 'normal'` rather than 'optimum': optimum attempts an instant refund
+ * and costs extra, and a shop cancelling a mistaken bill has no reason to pay
+ * for speed. Test mode refunds settle immediately either way.
+ */
+export async function refundPayment(input: {
+  paymentId: string;
+  amountPaise: number;
+  notes?: Record<string, string>;
+}): Promise<RazorpayRefund> {
+  if (isSimulated()) {
+    return {
+      id: `rfnd_SIM${randomSuffix()}`,
+      payment_id: input.paymentId,
+      amount: input.amountPaise,
+      status: 'processed',
+      _simulated: true,
+    };
+  }
+
+  return rzp<RazorpayRefund>(`/payments/${input.paymentId}/refund`, {
+    method: 'POST',
+    body: {
+      amount: input.amountPaise,
+      speed: 'normal',
+      notes: input.notes,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Webhook signature
 // ---------------------------------------------------------------------------
 
