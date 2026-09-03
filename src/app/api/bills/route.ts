@@ -46,6 +46,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       bill: result.bill,
       payment_url: result.paymentUrl,
+      checkout: result.checkout,
       stock_cut: result.stockCut,
       note: result.note,
     });

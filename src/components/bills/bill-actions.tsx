@@ -3,11 +3,12 @@
 import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ExternalLink, Loader2, PackageMinus, Plus, RefreshCw, Zap } from 'lucide-react';
+import { CreditCard, ExternalLink, Loader2, PackageMinus, Plus, RefreshCw, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
-import type { BillStatus, PaymentMethod } from '@/types/db';
+import { openCheckout } from '@/lib/razorpay/checkout-browser';
+import type { BillStatus, CheckoutHandle, PaymentMethod } from '@/types/db';
 
 /**
  * What the shopkeeper can do with a bill, by state.
@@ -24,6 +25,8 @@ export function BillActions({
   status,
   stockDeducted,
   paymentUrl,
+  checkout,
+  shopName,
   paymentMethod,
   simulatedMode,
 }: {
@@ -31,6 +34,8 @@ export function BillActions({
   status: BillStatus;
   stockDeducted: boolean;
   paymentUrl: string | null;
+  checkout: CheckoutHandle | null;
+  shopName: string;
   paymentMethod: PaymentMethod;
   /** True when the app has no Razorpay keys at all. */
   simulatedMode: boolean;
@@ -57,12 +62,53 @@ export function BillActions({
     [router],
   );
 
+  /**
+   * Take the payment on the shop's own screen — the customer taps UPI and scans
+   * from the counter, or the shopkeeper turns the monitor round. Razorpay's own
+   * answer, fetched server-side, is what actually marks the bill paid.
+   */
+  const takePayment = useCallback(async () => {
+    if (!checkout) return;
+    setBusy('checkout');
+    try {
+      const outcome = await openCheckout({
+        handle: checkout,
+        name: shopName,
+        description: `Counter bill at ${shopName}`,
+      });
+      if (outcome.error) {
+        toast.error(outcome.error);
+        return;
+      }
+      if (outcome.dismissed) {
+        toast.info('Payment closed', { description: 'Nothing was charged.' });
+        return;
+      }
+      await call('reconcile', `/api/bills/${billId}/reconcile`, 'Payment confirmed with Razorpay');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Razorpay Checkout could not open.');
+    } finally {
+      setBusy(null);
+    }
+  }, [checkout, shopName, billId, call]);
+
   // A cash bill is paid the moment it is written, so none of the "is the
   // customer done paying yet" actions apply to it.
   const awaitingPayment = status === 'created' && paymentMethod !== 'cash';
 
   return (
     <div className="flex flex-wrap gap-2">
+      {awaitingPayment && checkout ? (
+        <Button onClick={() => void takePayment()} disabled={busy !== null}>
+          {busy === 'checkout' ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+          ) : (
+            <CreditCard className="size-4" aria-hidden />
+          )}
+          Take payment
+        </Button>
+      ) : null}
+
       {awaitingPayment && paymentUrl && !simulatedMode ? (
         <Button
           render={<a href={paymentUrl} target="_blank" rel="noopener noreferrer" />}
@@ -70,7 +116,7 @@ export function BillActions({
           variant="outline"
         >
           <ExternalLink className="size-4" aria-hidden />
-          Open payment page
+          Open customer page
         </Button>
       ) : null}
 

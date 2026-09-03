@@ -3,7 +3,8 @@ import 'server-only';
 import {
   appUrl,
   createOrder,
-  createPaymentLink,
+  checkoutHandle,
+  tryCreatePaymentLink,
   isMockLinkedAccount,
   isSimulated,
   paymentFeePaise,
@@ -11,7 +12,7 @@ import {
   type RouteTransferSpec,
 } from '@/lib/razorpay/client';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import type { Shop, Transaction } from '@/types/db';
+import type { CheckoutHandle, Shop, Transaction } from '@/types/db';
 
 /**
  * Shop-to-shop purchases: reserve, then pay.
@@ -235,7 +236,13 @@ export async function cancelReservation(input: {
 export async function createPaymentForReservation(
   transactionId: string,
   actingShopId: string,
-): Promise<{ transaction: DetailedTransaction; paymentUrl: string; routeIsSimulated: boolean; note: string }> {
+): Promise<{
+  transaction: DetailedTransaction;
+  paymentUrl: string | null;
+  checkout: CheckoutHandle | null;
+  routeIsSimulated: boolean;
+  note: string;
+}> {
   const db = supabaseAdmin();
 
   const tx = await getTransaction(transactionId);
@@ -247,13 +254,15 @@ export async function createPaymentForReservation(
     throw new Error(`This reservation is already ${tx.status}.`);
   }
 
-  // Re-hand the same link if one was already created.
-  if (tx.razorpay_payment_link_url) {
+  // Re-hand what already exists rather than making a second order for the same
+  // goods. The order is what Checkout needs; the link is a bonus if we got one.
+  if (tx.razorpay_order_id) {
     return {
       transaction: tx,
       paymentUrl: tx.razorpay_payment_link_url,
+      checkout: checkoutHandle(tx.razorpay_order_id, tx.amount_paise + tx.processing_fee_paise),
       routeIsSimulated: tx.simulated,
-      note: 'Reusing the payment link already created for this reservation.',
+      note: 'Reusing the payment already started for this reservation.',
     };
   }
 
@@ -284,7 +293,7 @@ export async function createPaymentForReservation(
     transfers,
   });
 
-  const link = await createPaymentLink({
+  const link = await tryCreatePaymentLink({
     amountPaise: chargedPaise,
     description: `${tx.quantity} x ${tx.part_name} from ${tx.seller_name}`,
     referenceId: tx.id,
@@ -298,19 +307,20 @@ export async function createPaymentForReservation(
     .from('transactions')
     .update({
       razorpay_order_id: order.id,
-      razorpay_payment_link_id: link.id,
-      razorpay_payment_link_url: link.short_url,
+      razorpay_payment_link_id: link?.id ?? null,
+      razorpay_payment_link_url: link?.short_url ?? null,
       simulated: tx.simulated || routeIsSimulated,
     })
     .eq('id', tx.id)
     .select(DETAIL_SELECT)
     .single();
 
-  if (error) throw new Error(`Could not save the payment link: ${error.message}`);
+  if (error) throw new Error(`Could not save the payment details: ${error.message}`);
 
   return {
     transaction: flatten(data as unknown as RawDetail),
-    paymentUrl: link.short_url,
+    paymentUrl: link?.short_url ?? null,
+    checkout: checkoutHandle(order.id, chargedPaise),
     routeIsSimulated,
     note: routeIsSimulated
       ? isSimulated()

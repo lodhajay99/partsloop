@@ -2,6 +2,7 @@ import 'server-only';
 
 import {
   createPaymentTransfer,
+  fetchOrderPayments,
   fetchPaymentLink,
   fetchPaymentTransfers,
   isMockLinkedAccount,
@@ -297,6 +298,71 @@ export async function releaseHold(
  * This is what makes the demo work without a public webhook URL — it is a real
  * Razorpay API read, not a local guess.
  */
+/**
+ * Asks Razorpay whether anything has actually been paid, for a reservation or a
+ * bill.
+ *
+ * The order is checked first and the Payment Link second, because Checkout pays
+ * an order directly and there may be no link at all — a Razorpay test account
+ * allows only 30 Payment Links ever, so the app must not depend on having one.
+ * A link payment also lands on its order, so the order covers both routes; the
+ * link lookup stays as a fallback for rows created before this change.
+ *
+ * Never infers a payment: no captured payment means no fulfilment.
+ */
+async function findCapturedPayment(refs: {
+  orderId: string | null;
+  paymentLinkId: string | null;
+}): Promise<{ real: boolean; paymentId: string | null; orderId: string | null; note: string }> {
+  const realOrder = refs.orderId && !refs.orderId.startsWith('order_SIM') ? refs.orderId : null;
+  const realLink =
+    refs.paymentLinkId && !refs.paymentLinkId.startsWith('plink_SIM') ? refs.paymentLinkId : null;
+
+  if (isSimulated() || (!realOrder && !realLink)) {
+    return { real: false, paymentId: null, orderId: null, note: 'Simulated.' };
+  }
+
+  if (realOrder) {
+    const payments = await fetchOrderPayments(realOrder);
+    const captured = payments.find((p) => p.status === 'captured');
+    if (captured) {
+      return { real: true, paymentId: captured.id, orderId: realOrder, note: 'Captured.' };
+    }
+    if (!realLink) {
+      const authorized = payments.find((p) => p.status === 'authorized');
+      return {
+        real: true,
+        paymentId: null,
+        orderId: realOrder,
+        note: authorized
+          ? 'Razorpay has authorised a payment but not captured it yet. Try again in a moment.'
+          : 'Razorpay has no completed payment for this yet.',
+      };
+    }
+  }
+
+  if (realLink) {
+    const link = await fetchPaymentLink(realLink);
+    const captured = link.payments?.find((p) => p.status === 'captured');
+    if (link.status === 'paid' && captured) {
+      return {
+        real: true,
+        paymentId: captured.payment_id,
+        orderId: link.order_id ?? realOrder,
+        note: 'Captured.',
+      };
+    }
+    return {
+      real: true,
+      paymentId: null,
+      orderId: realOrder,
+      note: `Razorpay reports the payment link as "${link.status}".`,
+    };
+  }
+
+  return { real: true, paymentId: null, orderId: realOrder, note: 'No payment found yet.' };
+}
+
 export async function reconcileFromRazorpay(
   transactionId: string,
 ): Promise<{ changed: boolean; status: string; note: string; transaction: Transaction | null }> {
@@ -315,30 +381,33 @@ export async function reconcileFromRazorpay(
     return { changed: false, status: tx.status, note: 'Already settled.', transaction: tx };
   }
 
-  if (isSimulated() || !tx.razorpay_payment_link_id || tx.razorpay_payment_link_id.startsWith('plink_SIM')) {
+  const found = await findCapturedPayment({
+    orderId: tx.razorpay_order_id,
+    paymentLinkId: tx.razorpay_payment_link_id,
+  });
+
+  if (!found.real) {
     return {
       changed: false,
       status: tx.status,
-      note: 'Simulated payment link — use the in-app simulator to complete it.',
+      note: 'Simulated payment — use the in-app simulator to complete it.',
       transaction: tx,
     };
   }
 
-  const link = await fetchPaymentLink(tx.razorpay_payment_link_id);
-  if (link.status !== 'paid') {
+  if (!found.paymentId) {
     return {
       changed: false,
       status: tx.status,
-      note: `Razorpay reports the payment link as "${link.status}".`,
+      note: found.note,
       transaction: tx,
     };
   }
 
-  const paymentId = link.payments?.find((p) => p.status === 'captured')?.payment_id ?? null;
   const result = await fulfilPayment({
     transactionId: tx.id,
-    paymentId,
-    orderId: link.order_id ?? null,
+    paymentId: found.paymentId,
+    orderId: found.orderId,
     source: 'reconcile',
   });
 
@@ -441,31 +510,27 @@ export async function reconcileBillFromRazorpay(
     return { changed: false, status: bill.status, note: 'Already paid.' };
   }
 
-  if (
-    isSimulated() ||
-    !bill.razorpay_payment_link_id ||
-    bill.razorpay_payment_link_id.startsWith('plink_SIM')
-  ) {
+  const found = await findCapturedPayment({
+    orderId: bill.razorpay_order_id,
+    paymentLinkId: bill.razorpay_payment_link_id,
+  });
+
+  if (!found.real) {
     return {
       changed: false,
       status: bill.status,
-      note: 'Simulated payment link — use the in-app simulator to complete it.',
+      note: 'Simulated payment — use the in-app simulator to complete it.',
     };
   }
 
-  const link = await fetchPaymentLink(bill.razorpay_payment_link_id);
-  if (link.status !== 'paid') {
-    return {
-      changed: false,
-      status: bill.status,
-      note: `Razorpay reports the payment link as "${link.status}".`,
-    };
+  if (!found.paymentId) {
+    return { changed: false, status: bill.status, note: found.note };
   }
 
   const result = await fulfilBillPayment({
     billId: bill.id,
-    paymentId: link.payments?.find((p) => p.status === 'captured')?.payment_id ?? null,
-    orderId: link.order_id ?? null,
+    paymentId: found.paymentId,
+    orderId: found.orderId,
     source: 'reconcile',
   });
 

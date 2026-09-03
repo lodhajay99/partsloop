@@ -70,6 +70,8 @@ export default async function SimulatePayPage({ params }: PageProps<'/simulate/p
             status={tx.status}
             role={tx.buyer_shop_id === shop.id ? 'buyer' : 'seller'}
             paymentUrl={null}
+          partName={tx.part_name}
+          sellerName={tx.seller_name}
             simulatedMode
           />
         )}

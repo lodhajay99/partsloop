@@ -197,3 +197,13 @@ export interface SearchResult {
   reservation_id: string | null;
   reservation_status: TransactionStatus | null;
 }
+
+/**
+ * What the browser needs to open Razorpay Checkout. The key id is public by
+ * design; the secret stays on the server and the payment is confirmed there.
+ */
+export interface CheckoutHandle {
+  key_id: string;
+  order_id: string;
+  amount_paise: number;
+}

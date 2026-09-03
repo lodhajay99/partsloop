@@ -11,7 +11,7 @@ import { RazorpayRefs } from '@/components/transactions/razorpay-refs';
 import { requireSessionShop } from '@/lib/auth/session';
 import { getBill } from '@/lib/data/bills';
 import { dateTime, rupees, rupeesPrecise } from '@/lib/format';
-import { isSimulated, paymentFeeBps } from '@/lib/razorpay/client';
+import { appUrl, checkoutHandle, isSimulated, paymentFeeBps } from '@/lib/razorpay/client';
 import { cn } from '@/lib/utils';
 import type { BillStatus } from '@/types/db';
 
@@ -39,10 +39,13 @@ export default async function BillPage({ params }: PageProps<'/bills/[id]'>) {
   // What the customer actually pays: goods plus Razorpay's cut.
   const chargedPaise = bill.total_paise + bill.processing_fee_paise;
 
-  const qrDataUrl =
-    awaitingPayment && !isCash && bill.razorpay_payment_link_url
-      ? await QRCode.toDataURL(bill.razorpay_payment_link_url, { margin: 1, width: 360 })
-      : null;
+  // The QR points at our own /pay page rather than a Razorpay Payment Link.
+  // A test account only ever gets 30 links, so the counter flow cannot depend
+  // on having one — /pay opens Razorpay Checkout against the order instead.
+  const payUrl =
+    awaitingPayment && !isCash && bill.razorpay_order_id ? `${appUrl()}/pay/${bill.id}` : null;
+
+  const qrDataUrl = payUrl ? await QRCode.toDataURL(payUrl, { margin: 1, width: 360 }) : null;
 
   const meta = STATUS_META[bill.status];
 
@@ -100,7 +103,9 @@ export default async function BillPage({ params }: PageProps<'/bills/[id]'>) {
           billId={bill.id}
           status={bill.status}
           stockDeducted={stockDeducted}
-          paymentUrl={bill.razorpay_payment_link_url}
+          paymentUrl={payUrl}
+          checkout={checkoutHandle(bill.razorpay_order_id, chargedPaise)}
+          shopName={shop.name}
           paymentMethod={bill.payment_method}
           simulatedMode={isSimulated()}
         />
@@ -174,12 +179,12 @@ export default async function BillPage({ params }: PageProps<'/bills/[id]'>) {
                 <div className="min-w-0 space-y-2">
                   <p className="text-2xl font-semibold tabular-nums">{rupees(chargedPaise)}</p>
                   <a
-                    href={bill.razorpay_payment_link_url ?? '#'}
+                    href={payUrl ?? '#'}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="block max-w-xs truncate text-xs text-muted-foreground underline"
                   >
-                    {bill.razorpay_payment_link_url}
+                    {payUrl}
                   </a>
                 </div>
               </div>

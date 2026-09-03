@@ -2,6 +2,8 @@ import 'server-only';
 
 import crypto from 'node:crypto';
 
+import type { CheckoutHandle } from '@/types/db';
+
 /**
  * Thin typed wrapper over the Razorpay REST API (test mode).
  *
@@ -301,6 +303,68 @@ export async function createPaymentLink(input: {
       ...(input.transfers?.length ? { options: { order: { transfers: input.transfers } } } : {}),
     },
   });
+}
+
+/**
+ * The handle a browser needs to open Checkout for an order. Null in simulated
+ * mode, or for a synthetic order id, so the UI falls back to the simulator.
+ */
+export function checkoutHandle(
+  orderId: string | null | undefined,
+  amountPaise: number,
+): CheckoutHandle | null {
+  const keyId = publicKeyId();
+  if (!keyId || !orderId || orderId.startsWith('order_SIM')) return null;
+  return { key_id: keyId, order_id: orderId, amount_paise: amountPaise };
+}
+
+/**
+ * The key id, which is public by design — Checkout needs it in the browser.
+ * The secret never leaves the server.
+ */
+export function publicKeyId(): string | null {
+  return process.env.RAZORPAY_KEY_ID?.trim() || null;
+}
+
+export interface RazorpayPayment {
+  id: string;
+  status: string;
+  amount: number;
+  order_id?: string | null;
+}
+
+/** Payments captured against an order — how we confirm a Checkout payment. */
+export async function fetchOrderPayments(orderId: string): Promise<RazorpayPayment[]> {
+  const res = await rzp<{ items: RazorpayPayment[] }>(`/orders/${orderId}/payments`, {
+    method: 'GET',
+  });
+  return res.items ?? [];
+}
+
+/**
+ * A Payment Link, if the account can still make one.
+ *
+ * A Razorpay test account is capped at 30 Payment Links for its lifetime, and
+ * cancelling old ones does not give the slot back. This app hit that ceiling
+ * mid-demo and every payment stopped, because link creation sat on the critical
+ * path of both the reservation flow and the counter bill.
+ *
+ * Orders have no such cap, and Checkout runs off the order — so the link is now
+ * a convenience (a URL to forward, something to put in a QR) and its absence
+ * must never stop anyone paying.
+ */
+export async function tryCreatePaymentLink(
+  input: Parameters<typeof createPaymentLink>[0],
+): Promise<RazorpayPaymentLink | null> {
+  try {
+    return await createPaymentLink(input);
+  } catch (err) {
+    if (err instanceof RazorpayError) {
+      console.warn(`[razorpay] payment link unavailable, continuing on the order: ${err.message}`);
+      return null;
+    }
+    throw err;
+  }
 }
 
 export async function fetchPaymentLink(id: string): Promise<RazorpayPaymentLink> {

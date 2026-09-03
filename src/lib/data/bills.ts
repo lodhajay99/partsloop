@@ -3,13 +3,22 @@ import 'server-only';
 import {
   appUrl,
   createOrder,
-  createPaymentLink,
+  checkoutHandle,
+  tryCreatePaymentLink,
   isSimulated,
   paymentFeePaise,
   refundPayment,
 } from '@/lib/razorpay/client';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import type { Bill, BillLine, BillStatus, DetailedBill, PaymentMethod, Shop } from '@/types/db';
+import type {
+  Bill,
+  BillLine,
+  BillStatus,
+  CheckoutHandle,
+  DetailedBill,
+  PaymentMethod,
+  Shop,
+} from '@/types/db';
 
 /**
  * Counter bills — a walk-in customer buying several parts in one go.
@@ -97,6 +106,7 @@ export async function createBill(input: {
 }): Promise<{
   bill: DetailedBill;
   paymentUrl: string | null;
+  checkout: CheckoutHandle | null;
   stockCut: boolean;
   note: string;
 }> {
@@ -217,7 +227,7 @@ export async function createBill(input: {
     const saved = await getBill(bill.id);
     if (!saved) throw new Error('The bill vanished right after it was created.');
 
-    return { bill: saved, paymentUrl: null, stockCut, note };
+    return { bill: saved, paymentUrl: null, checkout: null, stockCut, note };
   }
 
   const description =
@@ -231,7 +241,7 @@ export async function createBill(input: {
     notes: { partloop_bill_id: bill.id, type: 'counter_bill' },
   });
 
-  const link = await createPaymentLink({
+  const link = await tryCreatePaymentLink({
     amountPaise: chargedPaise,
     description,
     referenceId: bill.id,
@@ -244,19 +254,23 @@ export async function createBill(input: {
     .from('bills')
     .update({
       razorpay_order_id: order.id,
-      razorpay_payment_link_id: link.id,
-      razorpay_payment_link_url: link.short_url,
+      razorpay_payment_link_id: link?.id ?? null,
+      razorpay_payment_link_url: link?.short_url ?? null,
       simulated: isSimulated(),
     })
     .eq('id', bill.id);
 
-  if (updateError) throw new Error(`Could not save the payment link: ${updateError.message}`);
+  if (updateError) throw new Error(`Could not save the payment details: ${updateError.message}`);
 
   // Mirror the Razorpay ids onto the line rows so the ledger table and the
   // transaction views keep working without knowing about bills.
   await db
     .from('transactions')
-    .update({ razorpay_order_id: order.id, razorpay_payment_link_id: link.id, simulated: isSimulated() })
+    .update({
+      razorpay_order_id: order.id,
+      razorpay_payment_link_id: link?.id ?? null,
+      simulated: isSimulated(),
+    })
     .eq('bill_id', bill.id);
 
   const saved = await getBill(bill.id);
@@ -264,11 +278,12 @@ export async function createBill(input: {
 
   return {
     bill: saved,
-    paymentUrl: link.short_url,
+    paymentUrl: link?.short_url ?? null,
+    checkout: checkoutHandle(order.id, chargedPaise),
     stockCut: false,
     note: isSimulated()
-      ? 'Simulated payment link — no Razorpay keys configured.'
-      : 'Live Razorpay Payment Link. Show the QR to the customer.',
+      ? 'Simulated payment — no Razorpay keys configured.'
+      : 'Live Razorpay order. Show the QR to the customer.',
   };
 }
 

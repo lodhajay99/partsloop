@@ -6,7 +6,8 @@ import { CreditCard, ExternalLink, HandCoins, Loader2, RefreshCw, Zap } from 'lu
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
-import type { TransactionStatus, TransactionType } from '@/types/db';
+import { openCheckout } from '@/lib/razorpay/checkout-browser';
+import type { CheckoutHandle, TransactionStatus, TransactionType } from '@/types/db';
 
 /**
  * The buyer/seller action bar. Every button here maps to exactly one Razorpay
@@ -19,6 +20,8 @@ export function TransactionActions({
   status,
   role,
   paymentUrl,
+  partName,
+  sellerName,
   simulatedMode,
 }: {
   transactionId: string;
@@ -26,6 +29,8 @@ export function TransactionActions({
   status: TransactionStatus;
   role: 'buyer' | 'seller';
   paymentUrl: string | null;
+  partName: string;
+  sellerName: string;
   /** True when the app has no Razorpay keys at all. */
   simulatedMode: boolean;
 }) {
@@ -40,25 +45,13 @@ export function TransactionActions({
         const body = (await res.json()) as {
           error?: string;
           note?: string;
-          payment_url?: string;
+          payment_url?: string | null;
+          checkout?: CheckoutHandle | null;
           changed?: boolean;
         };
         if (!res.ok) throw new Error(body.error ?? 'That did not work.');
 
-        // The window.open happens after an await, so it is no longer inside the
-        // click gesture and popup blockers will often stop it. When that
-        // happens, say so — the "Open payment page" button below is already
-        // rendering the same link.
-        let blocked = false;
-        if (body.payment_url) {
-          blocked = window.open(body.payment_url, '_blank', 'noopener,noreferrer') === null;
-        }
-
-        toast.success(successMessage, {
-          description: blocked
-            ? 'Your browser blocked the popup — use "Open payment page" below.'
-            : body.note,
-        });
+        toast.success(successMessage, { description: body.note });
         router.refresh();
         return body;
       } catch (err) {
@@ -71,6 +64,54 @@ export function TransactionActions({
     [router],
   );
 
+  /**
+   * Start the payment, then hand the buyer straight to Razorpay Checkout.
+   *
+   * Checkout opens in the page rather than a new tab, so there is no popup for
+   * a browser to block. When it reports success we do not believe it — we ask
+   * our own server to confirm the capture with Razorpay before anything moves.
+   */
+  const payNow = useCallback(async () => {
+    const body = await call('pay', `/api/reservations/${transactionId}/pay`, 'Payment started');
+    if (!body) return;
+
+    if (!body.checkout) {
+      // Simulated mode, or an older row with only a link. Fall back to the URL.
+      if (body.payment_url) window.open(body.payment_url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    setBusy('pay');
+    try {
+      const outcome = await openCheckout({
+        handle: body.checkout,
+        name: 'PartLoop',
+        description: `${partName} from ${sellerName}`,
+      });
+
+      if (outcome.error) {
+        toast.error(outcome.error);
+        return;
+      }
+      if (outcome.dismissed) {
+        toast.info('Payment closed', {
+          description: 'Nothing was charged. "Pay now" picks up where you left off.',
+        });
+        return;
+      }
+
+      await call(
+        'reconcile',
+        `/api/transactions/${transactionId}/reconcile`,
+        'Payment confirmed with Razorpay',
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Razorpay Checkout could not open.');
+    } finally {
+      setBusy(null);
+    }
+  }, [call, transactionId, partName, sellerName]);
+
   const isBuyer = role === 'buyer';
   const awaitingPayment = status === 'created' || status === 'reserved';
   const canRelease = isBuyer && type === 'inter_shop_purchase' && (status === 'on_hold' || status === 'paid');
@@ -79,9 +120,7 @@ export function TransactionActions({
     <div className="flex flex-wrap gap-2">
       {type === 'inter_shop_purchase' && isBuyer && awaitingPayment ? (
         <Button
-          onClick={() =>
-            void call('pay', `/api/reservations/${transactionId}/pay`, 'Payment link ready')
-          }
+          onClick={() => void payNow()}
           disabled={busy !== null}
         >
           {busy === 'pay' ? (
@@ -89,7 +128,7 @@ export function TransactionActions({
           ) : (
             <CreditCard className="size-4" aria-hidden />
           )}
-          {paymentUrl ? 'Reopen payment link' : 'Pay now'}
+          Pay now
         </Button>
       ) : null}
 

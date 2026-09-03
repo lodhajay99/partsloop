@@ -133,6 +133,8 @@ export default async function TransactionPage({ params }: PageProps<'/transactio
           status={tx.status}
           role={role}
           paymentUrl={tx.razorpay_payment_link_url}
+          partName={tx.part_name}
+          sellerName={tx.seller_name}
           simulatedMode={isSimulated()}
         />
         {isInterShop ? (

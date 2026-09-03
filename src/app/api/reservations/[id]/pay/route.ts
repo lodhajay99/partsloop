@@ -20,6 +20,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({
       transaction: result.transaction,
       payment_url: result.paymentUrl,
+      checkout: result.checkout,
       route_simulated: result.routeIsSimulated,
       note: result.note,
     });
