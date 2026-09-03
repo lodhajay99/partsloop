@@ -11,7 +11,7 @@ import { TransactionActions } from '@/components/transactions/transaction-action
 import { requireSessionShop } from '@/lib/auth/session';
 import { expireStaleReservations } from '@/lib/data/fulfilment';
 import { canShopSee, getTransaction } from '@/lib/data/transactions';
-import { dateTime, minutesUntil, rupees } from '@/lib/format';
+import { dateTime, minutesUntil, rupees, rupeesPrecise } from '@/lib/format';
 import { isMockLinkedAccount, isSimulated, platformFeeBps } from '@/lib/razorpay/client';
 
 export const dynamic = 'force-dynamic';
@@ -151,19 +151,23 @@ export default async function TransactionPage({ params }: PageProps<'/transactio
               </h2>
 
               <dl className="mt-3 space-y-2 text-sm">
+                {/* Exact paise here, not rounded rupees: these three lines are a
+                    subtraction the reader can check, and rounding each one
+                    independently makes it stop adding up (₹1,772 − ₹35 = ₹1,736
+                    reads as an error even though the paise are right). */}
                 <div className="flex justify-between gap-4">
                   <dt className="text-muted-foreground">Buyer pays</dt>
-                  <dd className="tabular-nums">{rupees(tx.amount_paise)}</dd>
+                  <dd className="tabular-nums">{rupeesPrecise(tx.amount_paise)}</dd>
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt className="text-muted-foreground">
                     Platform fee ({(platformFeeBps() / 100).toFixed(1)}%)
                   </dt>
-                  <dd className="tabular-nums">−{rupees(tx.platform_fee_paise)}</dd>
+                  <dd className="tabular-nums">−{rupeesPrecise(tx.platform_fee_paise)}</dd>
                 </div>
                 <div className="flex justify-between gap-4 border-t pt-2 font-medium">
                   <dt>Route transfer to {tx.seller_name}</dt>
-                  <dd className="tabular-nums">{rupees(sellerShare)}</dd>
+                  <dd className="tabular-nums">{rupeesPrecise(sellerShare)}</dd>
                 </div>
               </dl>
 

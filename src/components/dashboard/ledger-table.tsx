@@ -6,7 +6,7 @@ import { ArrowDownLeft, ArrowUpRight, Banknote, Store } from 'lucide-react';
 
 import { SeedBadge, SimulatedBadge, StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
-import { dateTime, rupees } from '@/lib/format';
+import { dateTime, rupees, rupeesPrecise } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { LedgerEntry } from '@/lib/data/dashboard';
 
@@ -131,7 +131,8 @@ export function LedgerTable({ entries }: { entries: LedgerEntry[] }) {
                       {rupees(e.amount_paise)}
                       {e.platform_fee_paise > 0 && e.direction === 'sold_to_shop' ? (
                         <span className="block text-[11px] font-normal text-muted-foreground">
-                          −{rupees(e.platform_fee_paise)} fee
+                          {/* Exact: rounding ₹8.53 to ₹9 overstates a small fee by 5%. */}
+                          −{rupeesPrecise(e.platform_fee_paise)} fee
                         </span>
                       ) : null}
                     </td>
