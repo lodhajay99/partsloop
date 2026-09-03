@@ -102,9 +102,11 @@ export default async function DashboardPage({ searchParams }: PageProps<'/dashbo
           value={rupees(data.soldToShops.grossPaise - data.soldToShops.feePaise)}
           icon={<ArrowUpRight className="size-4 text-success" aria-hidden />}
           sub={
-            data.soldToShops.count > 0
-              ? `${data.soldToShops.count} trades · ${rupees(data.soldToShops.feePaise)} platform fee`
-              : 'No wholesale trades yet'
+            data.soldToShops.count === 0
+              ? 'No wholesale trades yet'
+              : data.soldToShops.feePaise > 0
+                ? `${data.soldToShops.count} trades · ${rupees(data.soldToShops.feePaise)} platform fee`
+                : `${data.soldToShops.count} trades · no platform fee`
           }
         />
         <StatCard

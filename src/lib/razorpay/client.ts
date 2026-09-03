@@ -65,15 +65,31 @@ export function appUrl(): string {
   return 'http://localhost:3000';
 }
 
+/** No platform fee by default. See DEFAULT_PLATFORM_FEE_BPS. */
+const DEFAULT_PLATFORM_FEE_BPS = 0;
+
+/**
+ * The platform's cut on a shop-to-shop trade, in basis points.
+ *
+ * Currently 0. A seller already loses roughly 2.6% to Razorpay's own processing
+ * fee, and stacking a platform fee on top took ~4.6% out of a wholesale margin
+ * that is often only 10-15% — penalising precisely the behaviour the network
+ * depends on, a shop listing stock it is sitting on. The intended model is a
+ * flat per-shop subscription, which does not scale with transaction size and
+ * does not make listing stock feel expensive.
+ *
+ * Still configurable: set PLATFORM_FEE_BPS (200 = 2%) to switch a rake back on
+ * without a code change. Existing trades keep the fee they were agreed at,
+ * because it is frozen onto the row at reservation time.
+ */
 export function platformFeeBps(): number {
-  // An empty or blank PLATFORM_FEE_BPS= line is a misconfiguration, not a
-  // deliberate 0% fee — Number('') is 0, which would silently waive the fee.
-  // An explicit "0" still means zero.
   const raw = process.env.PLATFORM_FEE_BPS?.trim();
-  if (!raw) return 200;
+  if (!raw) return DEFAULT_PLATFORM_FEE_BPS;
 
   const value = Number(raw);
-  return Number.isFinite(value) && value >= 0 && value <= 10_000 ? value : 200;
+  return Number.isFinite(value) && value >= 0 && value <= 10_000
+    ? value
+    : DEFAULT_PLATFORM_FEE_BPS;
 }
 
 /** Platform's cut, in paise. Basis points of the gross amount. */

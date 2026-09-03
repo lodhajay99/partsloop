@@ -34,7 +34,10 @@ export function IntegrationBanner() {
       <p className="text-foreground/80">
         <span className="font-semibold text-success">Razorpay test mode.</span> Orders, Payment Links
         and Route calls are real API requests against your test keys — open the Razorpay dashboard
-        alongside this app to watch them land. Platform fee is {feePct}% of each shop-to-shop trade.
+        alongside this app to watch them land.{' '}
+        {platformFeeBps() > 0
+          ? `Platform fee is ${feePct}% of each shop-to-shop trade.`
+          : 'PartLoop takes no platform fee.'}{' '}
         Route splits still fall back to simulation for shops whose Linked Account id is a mock
         (<code className="rounded bg-background/60 px-1 py-0.5 text-xs">acc_MOCK…</code>), because
         real onboarding needs KYC.

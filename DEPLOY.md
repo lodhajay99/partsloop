@@ -59,7 +59,7 @@ right host automatically — including on preview deployments. Setting it to a s
 is the most common way to end up with payment links that redirect customers to
 `localhost:3000`. Only set it once a custom domain is attached.
 
-Optional, all with sensible defaults: `PLATFORM_FEE_BPS` (200 = 2%),
+Optional, all with sensible defaults: `PLATFORM_FEE_BPS` (0 = no platform fee),
 `RESERVATION_HOLD_MINUTES` (30), `NEXT_PUBLIC_LOW_STOCK_THRESHOLD` (3).
 
 4. **Deploy.** First build takes a couple of minutes.

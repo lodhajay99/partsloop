@@ -95,10 +95,17 @@ describe('mode detection', () => {
 });
 
 describe('platform fee', () => {
-  it('defaults to 2%', () => {
+  it('takes nothing by default', () => {
     delete process.env.PLATFORM_FEE_BPS;
+    assert.equal(platformFeeBps(), 0);
+    assert.equal(platformFeePaise(248000), 0);
+  });
+
+  it('can still be switched on without a code change', () => {
+    process.env.PLATFORM_FEE_BPS = '200';
     assert.equal(platformFeeBps(), 200);
     assert.equal(platformFeePaise(248000), 4960);
+    delete process.env.PLATFORM_FEE_BPS;
   });
 
   it('honours a configured basis-point value', () => {
@@ -110,17 +117,11 @@ describe('platform fee', () => {
   it('falls back to the default on nonsense or blank input', () => {
     for (const bad of ['abc', '-1', '20000', '', '   ']) {
       process.env.PLATFORM_FEE_BPS = bad;
-      assert.equal(platformFeeBps(), 200, `for ${JSON.stringify(bad)}`);
+      assert.equal(platformFeeBps(), 0, `for ${JSON.stringify(bad)}`);
     }
   });
 
-  it('honours an explicit zero fee', () => {
-    process.env.PLATFORM_FEE_BPS = '0';
-    assert.equal(platformFeeBps(), 0);
-    assert.equal(platformFeePaise(248000), 0);
-  });
-
-  it('never charges more than the transaction', () => {
+  it('never charges more than the transaction, at any configured rate', () => {
     process.env.PLATFORM_FEE_BPS = '200';
     for (const amount of [1, 99, 100, 12345, 9_999_999]) {
       const fee = platformFeePaise(amount);

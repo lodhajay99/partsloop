@@ -159,12 +159,21 @@ export default async function TransactionPage({ params }: PageProps<'/transactio
                   <dt className="text-muted-foreground">Buyer pays</dt>
                   <dd className="tabular-nums">{rupeesPrecise(tx.amount_paise)}</dd>
                 </div>
-                <div className="flex justify-between gap-4">
-                  <dt className="text-muted-foreground">
-                    Platform fee ({(platformFeeBps() / 100).toFixed(1)}%)
-                  </dt>
-                  <dd className="tabular-nums">−{rupeesPrecise(tx.platform_fee_paise)}</dd>
-                </div>
+                {/* With no platform fee there is nothing to subtract, and a
+                    "−₹0.00" line is just noise pretending to be arithmetic. */}
+                {tx.platform_fee_paise > 0 ? (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">
+                      Platform fee ({(platformFeeBps() / 100).toFixed(1)}%)
+                    </dt>
+                    <dd className="tabular-nums">−{rupeesPrecise(tx.platform_fee_paise)}</dd>
+                  </div>
+                ) : (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Platform fee</dt>
+                    <dd className="text-muted-foreground">none — PartLoop takes no cut</dd>
+                  </div>
+                )}
                 <div className="flex justify-between gap-4 border-t pt-2 font-medium">
                   <dt>Route transfer to {tx.seller_name}</dt>
                   <dd className="tabular-nums">{rupeesPrecise(sellerShare)}</dd>

@@ -200,8 +200,8 @@ from.
 **Reserve → pay → hold → release.**
 
 1. Reserve → a `transactions` row, `status = 'reserved'`, `hold_until = now() + 30 min`.
-2. Pay → a Razorpay Order and a Payment Link carrying `options.order.transfers` — seller's share
-   (amount minus platform fee) to their Linked Account, created `on_hold: true`.
+2. Pay → a Razorpay Order and a Payment Link carrying `options.order.transfers` — the seller's
+   share to their Linked Account, created `on_hold: true`.
 3. On capture (webhook, or the reconcile poll) → status `on_hold`, seller's stock decremented, and
    the transfer confirmed held. If Razorpay created no transfer, one is created directly on the
    payment; if that is impossible (mock Linked Account), a clearly-marked simulated transfer id is
@@ -247,6 +247,23 @@ actually happened — a Razorpay capture, or cash taken and stock moved in the s
 **The dashboard** reads `transactions` and nothing else, and carries a dedicated **Walk-in counter**
 board: taken today, taken this month, the Razorpay/cash split, anything needing attention, and the
 last few bills with their state and payment method.
+
+### The platform fee is zero
+
+`PLATFORM_FEE_BPS` defaults to **0**, so PartLoop takes nothing from either kind of sale.
+
+It was 2% on shop-to-shop trades. The arithmetic killed it: Razorpay already takes roughly 2.6% of
+every payment in processing fees, so a 2% rake meant the selling shop lost about **4.6%** on a
+wholesale margin that is typically 10-15%. That is a third of the margin, charged to the shop doing
+the favour — taxing precisely the behaviour the network needs, which is shops listing stock they are
+sitting on.
+
+The intended model is a **flat per-shop subscription**. It does not scale with transaction size, so
+a big trade is not punished, and listing stock never feels expensive.
+
+The mechanism is still there and still tested: set `PLATFORM_FEE_BPS=200` and 2% comes back with no
+code change. Fees are frozen onto the transaction row at reservation time, so changing the rate
+never rewrites what past trades were agreed at.
 
 ### Money
 
