@@ -248,6 +248,29 @@ actually happened — a Razorpay capture, or cash taken and stock moved in the s
 board: taken today, taken this month, the Razorpay/cash split, anything needing attention, and the
 last few bills with their state and payment method.
 
+### Who pays Razorpay's fee
+
+Razorpay deducts roughly 2.6% (about 2.2% plus 18% GST on that fee) from every payment before
+settling it. By default the seller absorbs that: list a part at ₹2,232 and ₹58 quietly disappears.
+
+`PAYMENT_FEE_BPS` (default `260`) adds that cost to what the **payer** is charged instead, so the
+shop banks the price it listed. A ₹2,232 part is charged at ₹2,290.03; the shop still earns ₹2,232.
+Cash bills never carry it — a database constraint enforces that, because there is no processor to
+reimburse.
+
+The surcharge is **stored, not derived**. Razorpay's rate varies by payment method and can change,
+so recomputing an old bill from today's rate would restate what a customer was actually charged. It
+is frozen onto the row when the charge is created.
+
+It is also **never revenue**: `transactions.amount_paise` stays the goods value, so every dashboard
+figure reflects what the shop earned rather than what passed through it. `npm run db:verify` asserts
+that the line items sum to the goods total, not the charged total.
+
+> **Before using this in production, check the rules.** In India the RBI prohibits merchants from
+> surcharging debit card payments, and UPI and RuPay debit carry zero MDR under Section 269SU — so
+> there is nothing to pass on there anyway. A blanket surcharge is safest treated as a
+> card-only or demo behaviour. Set `PAYMENT_FEE_BPS=0` to absorb the cost instead.
+
 ### The platform fee is zero
 
 `PLATFORM_FEE_BPS` defaults to **0**, so PartLoop takes nothing from either kind of sale.

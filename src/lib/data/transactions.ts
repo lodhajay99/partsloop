@@ -6,6 +6,7 @@ import {
   createPaymentLink,
   isMockLinkedAccount,
   isSimulated,
+  paymentFeePaise,
   platformFeePaise,
   type RouteTransferSpec,
 } from '@/lib/razorpay/client';
@@ -159,6 +160,9 @@ export async function createReservation(input: {
       quantity,
       amount_paise: amountPaise,
       platform_fee_paise: platformFeePaise(amountPaise),
+      // Razorpay's cut, added on top for the buyer, so the selling shop banks
+      // the price it listed rather than quietly losing ~2.6% of it.
+      processing_fee_paise: paymentFeePaise(amountPaise),
       status: 'reserved',
       hold_until: holdUntil.toISOString(),
     })
@@ -217,15 +221,19 @@ export async function createPaymentForReservation(
         },
       ];
 
+  // The buyer pays for the goods and for moving the money; the seller's Route
+  // transfer is unaffected by the surcharge.
+  const chargedPaise = tx.amount_paise + tx.processing_fee_paise;
+
   const order = await createOrder({
-    amountPaise: tx.amount_paise,
+    amountPaise: chargedPaise,
     receipt: `psl_${tx.id.slice(0, 30)}`,
     notes: { partloop_transaction_id: tx.id, type: 'inter_shop_purchase' },
     transfers,
   });
 
   const link = await createPaymentLink({
-    amountPaise: tx.amount_paise,
+    amountPaise: chargedPaise,
     description: `${tx.quantity} x ${tx.part_name} from ${tx.seller_name}`,
     referenceId: tx.id,
     callbackUrl: `${appUrl()}/transactions/${tx.id}?from=razorpay`,

@@ -12,7 +12,12 @@ import { requireSessionShop } from '@/lib/auth/session';
 import { expireStaleReservations } from '@/lib/data/fulfilment';
 import { canShopSee, getTransaction } from '@/lib/data/transactions';
 import { dateTime, minutesUntil, rupees, rupeesPrecise } from '@/lib/format';
-import { isMockLinkedAccount, isSimulated, platformFeeBps } from '@/lib/razorpay/client';
+import {
+  isMockLinkedAccount,
+  isSimulated,
+  paymentFeeBps,
+  platformFeeBps,
+} from '@/lib/razorpay/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,6 +38,7 @@ export default async function TransactionPage({ params }: PageProps<'/transactio
   const role = tx.buyer_shop_id === shop.id ? 'buyer' : 'seller';
   const isInterShop = tx.type === 'inter_shop_purchase';
   const sellerShare = tx.amount_paise - tx.platform_fee_paise;
+  const buyerPays = tx.amount_paise + tx.processing_fee_paise;
   const awaitingPayment = tx.status === 'created' || tx.status === 'reserved';
 
   // The seller's QR for a walk-in customer to scan at the counter.
@@ -80,7 +86,9 @@ export default async function TransactionPage({ params }: PageProps<'/transactio
           </p>
         </div>
 
-        <p className="text-3xl font-semibold tabular-nums">{rupees(tx.amount_paise)}</p>
+        <p className="text-3xl font-semibold tabular-nums">
+          {rupees(isInterShop ? buyerPays : tx.amount_paise)}
+        </p>
       </header>
 
       {tx.status === 'reserved' && tx.hold_until ? (
@@ -156,8 +164,20 @@ export default async function TransactionPage({ params }: PageProps<'/transactio
                     independently makes it stop adding up (₹1,772 − ₹35 = ₹1,736
                     reads as an error even though the paise are right). */}
                 <div className="flex justify-between gap-4">
-                  <dt className="text-muted-foreground">Buyer pays</dt>
+                  <dt className="text-muted-foreground">Part price</dt>
                   <dd className="tabular-nums">{rupeesPrecise(tx.amount_paise)}</dd>
+                </div>
+                {tx.processing_fee_paise > 0 ? (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">
+                      Payment processing ({(paymentFeeBps() / 100).toFixed(1)}%), paid by the buyer
+                    </dt>
+                    <dd className="tabular-nums">+{rupeesPrecise(tx.processing_fee_paise)}</dd>
+                  </div>
+                ) : null}
+                <div className="flex justify-between gap-4 border-t pt-2">
+                  <dt className="text-muted-foreground">Buyer pays</dt>
+                  <dd className="tabular-nums">{rupeesPrecise(buyerPays)}</dd>
                 </div>
                 {/* With no platform fee there is nothing to subtract, and a
                     "−₹0.00" line is just noise pretending to be arithmetic. */}

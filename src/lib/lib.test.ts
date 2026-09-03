@@ -15,6 +15,8 @@ import { describe, it } from 'node:test';
 import {
   appUrl,
   isMockLinkedAccount,
+  paymentFeeBps,
+  paymentFeePaise,
   isSimulated,
   platformFeeBps,
   platformFeePaise,
@@ -267,5 +269,40 @@ describe('dashboard month selection', () => {
       assert.equal(parseMonthParam(bad, now), null, `for ${JSON.stringify(bad)}`);
     }
     assert.equal(parseMonthParam(undefined, now), null);
+  });
+});
+
+describe('payment processing surcharge', () => {
+  it('defaults to about what Razorpay actually deducts', () => {
+    delete process.env.PAYMENT_FEE_BPS;
+    assert.equal(paymentFeeBps(), 260);
+    // 2.6% of Rs2,232 is Rs58.03 — Razorpay charged Rs57.95 on the real payment.
+    assert.equal(paymentFeePaise(223200), 5803);
+  });
+
+  it('can be tuned or switched off entirely', () => {
+    process.env.PAYMENT_FEE_BPS = '0';
+    assert.equal(paymentFeeBps(), 0);
+    assert.equal(paymentFeePaise(223200), 0);
+
+    process.env.PAYMENT_FEE_BPS = '200';
+    assert.equal(paymentFeePaise(100000), 2000);
+    delete process.env.PAYMENT_FEE_BPS;
+  });
+
+  it('falls back to the default on nonsense input', () => {
+    for (const bad of ['abc', '-5', '99999', '', '  ']) {
+      process.env.PAYMENT_FEE_BPS = bad;
+      assert.equal(paymentFeeBps(), 260, `for ${JSON.stringify(bad)}`);
+    }
+    delete process.env.PAYMENT_FEE_BPS;
+  });
+
+  it('never exceeds the amount it is charged on', () => {
+    delete process.env.PAYMENT_FEE_BPS;
+    for (const amount of [1, 99, 100, 12345, 9_999_999]) {
+      const fee = paymentFeePaise(amount);
+      assert.ok(fee >= 0 && fee <= amount, `fee ${fee} on ${amount}`);
+    }
   });
 });

@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { rupees, rupeesToPaise } from '@/lib/format';
+import { rupees, rupeesPrecise, rupeesToPaise } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { InventoryLine } from '@/lib/data/inventory';
 import type { PaymentMethod } from '@/types/db';
@@ -33,7 +33,14 @@ interface CartLine {
   inStock: number;
 }
 
-export function BillBuilder({ lines }: { lines: InventoryLine[] }) {
+export function BillBuilder({
+  lines,
+  paymentFeeBps,
+}: {
+  lines: InventoryLine[];
+  /** Razorpay's cut in basis points, passed to the customer on a card payment. */
+  paymentFeeBps: number;
+}) {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -103,6 +110,7 @@ export function BillBuilder({ lines }: { lines: InventoryLine[] }) {
   const unitCount = cart.reduce((sum, c) => sum + c.quantity, 0);
   const hasBadPrice = cart.some((c) => rupeesToPaise(c.price) <= 0);
   const disabled = submitting !== null || cart.length === 0 || totalPaise <= 0 || hasBadPrice;
+  const processingFeePaise = Math.round((totalPaise * paymentFeeBps) / 10_000);
 
   const charge = useCallback(
     async (paymentMethod: PaymentMethod) => {
@@ -303,9 +311,33 @@ export function BillBuilder({ lines }: { lines: InventoryLine[] }) {
           )}
 
           <div className="space-y-3 border-t px-4 py-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Total</span>
-              <span className="text-xl font-semibold tabular-nums">{rupees(totalPaise)}</span>
+            <div className="space-y-1 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Parts</span>
+                <span className="tabular-nums">{rupees(totalPaise)}</span>
+              </div>
+              {processingFeePaise > 0 ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">
+                    Card fee ({(paymentFeeBps / 100).toFixed(1)}%)
+                  </span>
+                  <span className="tabular-nums">+{rupeesPrecise(processingFeePaise)}</span>
+                </div>
+              ) : null}
+              <div className="flex items-center justify-between border-t pt-1.5">
+                <span className="text-muted-foreground">
+                  {processingFeePaise > 0 ? 'On card' : 'Total'}
+                </span>
+                <span className="text-xl font-semibold tabular-nums">
+                  {rupees(totalPaise + processingFeePaise)}
+                </span>
+              </div>
+              {processingFeePaise > 0 ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">In cash</span>
+                  <span className="tabular-nums">{rupees(totalPaise)}</span>
+                </div>
+              ) : null}
             </div>
 
             <Button
@@ -341,7 +373,8 @@ export function BillBuilder({ lines }: { lines: InventoryLine[] }) {
               <span className="font-medium text-foreground">Razorpay</span> shows a QR for the whole
               bill; stock comes off the shelf after you confirm handover.{' '}
               <span className="font-medium text-foreground">Cash</span> books the sale and cuts stock
-              straight away — with cash the money and the parts change hands together.
+              straight away — with cash the money and the parts change hands together, and there is no
+              card fee to pass on.
             </p>
           </div>
         </div>

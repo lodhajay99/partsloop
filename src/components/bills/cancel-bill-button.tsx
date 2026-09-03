@@ -29,6 +29,7 @@ export function CancelBillButton({
   billId: string;
   status: BillStatus;
   paymentMethod: PaymentMethod;
+  /** What the customer actually paid, surcharge included. */
   totalPaise: number;
   stockDeducted: boolean;
 }) {

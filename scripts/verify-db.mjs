@@ -24,6 +24,7 @@ import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 
 import { billChecks } from './checks/bills.mjs';
 import { cancelChecks } from './checks/cancel.mjs';
+import { processingFeeChecks } from './checks/processing-fee.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const migrationsDir = join(here, '..', 'supabase', 'migrations');
@@ -415,6 +416,7 @@ check('a client cannot mark its own purchase paid (no UPDATE grant)', clientSett
 
 await billChecks({ db, check, rejects, shopA, otherShop });
 await cancelChecks({ db, check, shopA, otherShop });
+await processingFeeChecks({ db, check, rejects, shopA });
 
 // ---------------------------------------------------------------------------
 // PostgREST foreign-key hints used by the app

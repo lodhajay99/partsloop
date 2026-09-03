@@ -1,6 +1,7 @@
 import { BillBuilder } from '@/components/sales/bill-builder';
 import { requireSessionShop } from '@/lib/auth/session';
 import { getShopInventory } from '@/lib/data/inventory';
+import { paymentFeeBps } from '@/lib/razorpay/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,7 @@ export default async function NewBillPage() {
         </p>
       </header>
 
-      <BillBuilder lines={lines} />
+      <BillBuilder lines={lines} paymentFeeBps={paymentFeeBps()} />
     </div>
   );
 }

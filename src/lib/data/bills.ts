@@ -5,6 +5,7 @@ import {
   createOrder,
   createPaymentLink,
   isSimulated,
+  paymentFeePaise,
   refundPayment,
 } from '@/lib/razorpay/client';
 import { supabaseAdmin } from '@/lib/supabase/admin';
@@ -155,7 +156,19 @@ export async function createBill(input: {
   const isCash = paymentMethod === 'cash';
   const paidAt = new Date().toISOString();
 
-  const bill = await insertBillWithNumber(input.shop.id, totalPaise, paymentMethod, isCash ? paidAt : null);
+  // Cash has no processor to reimburse, so no surcharge. On a Razorpay bill the
+  // customer covers what Razorpay will deduct, leaving the shop with the price
+  // it actually listed.
+  const processingFeePaise = isCash ? 0 : paymentFeePaise(totalPaise);
+  const chargedPaise = totalPaise + processingFeePaise;
+
+  const bill = await insertBillWithNumber(
+    input.shop.id,
+    totalPaise,
+    paymentMethod,
+    isCash ? paidAt : null,
+    processingFeePaise,
+  );
 
   const { error: linesError } = await db.from('transactions').insert(
     lines.map((line) => ({
@@ -213,13 +226,13 @@ export async function createBill(input: {
       : `${lines.length} items at ${input.shop.name}`;
 
   const order = await createOrder({
-    amountPaise: totalPaise,
+    amountPaise: chargedPaise,
     receipt: `psl_bill_${bill.id.slice(0, 24)}`,
     notes: { partloop_bill_id: bill.id, type: 'counter_bill' },
   });
 
   const link = await createPaymentLink({
-    amountPaise: totalPaise,
+    amountPaise: chargedPaise,
     description,
     referenceId: bill.id,
     callbackUrl: `${appUrl()}/bills/${bill.id}?from=razorpay`,
@@ -269,6 +282,7 @@ async function insertBillWithNumber(
   totalPaise: number,
   paymentMethod: PaymentMethod,
   paidAt: string | null,
+  processingFeePaise: number,
 ): Promise<Bill> {
   const db = supabaseAdmin();
 
@@ -284,6 +298,7 @@ async function insertBillWithNumber(
         shop_id: shopId,
         bill_number: (nextNumber as number) ?? 1,
         total_paise: totalPaise,
+        processing_fee_paise: processingFeePaise,
         payment_method: paymentMethod,
         status: paidAt ? 'paid' : 'created',
         paid_at: paidAt,
@@ -390,7 +405,8 @@ export async function cancelBill(input: {
     // than books saying money went back when it did not.
     const refund = await refundPayment({
       paymentId: existing.razorpay_payment_id,
-      amountPaise: existing.total_paise,
+      // Refund what they actually paid, surcharge included.
+      amountPaise: existing.total_paise + existing.processing_fee_paise,
       notes: { partloop_bill_id: existing.id, reason: input.reason ?? 'cancelled at counter' },
     });
 

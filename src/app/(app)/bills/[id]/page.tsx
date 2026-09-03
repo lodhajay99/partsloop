@@ -10,8 +10,8 @@ import { SeedBadge, SimulatedBadge } from '@/components/status-badge';
 import { RazorpayRefs } from '@/components/transactions/razorpay-refs';
 import { requireSessionShop } from '@/lib/auth/session';
 import { getBill } from '@/lib/data/bills';
-import { dateTime, rupees } from '@/lib/format';
-import { isSimulated } from '@/lib/razorpay/client';
+import { dateTime, rupees, rupeesPrecise } from '@/lib/format';
+import { isSimulated, paymentFeeBps } from '@/lib/razorpay/client';
 import { cn } from '@/lib/utils';
 import type { BillStatus } from '@/types/db';
 
@@ -36,6 +36,8 @@ export default async function BillPage({ params }: PageProps<'/bills/[id]'>) {
   const awaitingPayment = bill.status === 'created';
   const stockDeducted = Boolean(bill.stock_deducted_at);
   const isCash = bill.payment_method === 'cash';
+  // What the customer actually pays: goods plus Razorpay's cut.
+  const chargedPaise = bill.total_paise + bill.processing_fee_paise;
 
   const qrDataUrl =
     awaitingPayment && !isCash && bill.razorpay_payment_link_url
@@ -90,7 +92,7 @@ export default async function BillPage({ params }: PageProps<'/bills/[id]'>) {
           </p>
         </div>
 
-        <p className="text-3xl font-semibold tabular-nums">{rupees(bill.total_paise)}</p>
+        <p className="text-3xl font-semibold tabular-nums">{rupees(chargedPaise)}</p>
       </header>
 
       <div className="flex flex-wrap items-start gap-2">
@@ -106,7 +108,7 @@ export default async function BillPage({ params }: PageProps<'/bills/[id]'>) {
           billId={bill.id}
           status={bill.status}
           paymentMethod={bill.payment_method}
-          totalPaise={bill.total_paise}
+          totalPaise={chargedPaise}
           stockDeducted={stockDeducted}
         />
       </div>
@@ -163,14 +165,14 @@ export default async function BillPage({ params }: PageProps<'/bills/[id]'>) {
               <div className="mt-4 flex flex-wrap items-center gap-6">
                 <Image
                   src={qrDataUrl}
-                  alt={`Razorpay payment QR code for ${rupees(bill.total_paise)}`}
+                  alt={`Razorpay payment QR code for ${rupees(chargedPaise)}`}
                   width={180}
                   height={180}
                   unoptimized
                   className="rounded-lg border bg-white p-2"
                 />
                 <div className="min-w-0 space-y-2">
-                  <p className="text-2xl font-semibold tabular-nums">{rupees(bill.total_paise)}</p>
+                  <p className="text-2xl font-semibold tabular-nums">{rupees(chargedPaise)}</p>
                   <a
                     href={bill.razorpay_payment_link_url ?? '#'}
                     target="_blank"
@@ -202,9 +204,31 @@ export default async function BillPage({ params }: PageProps<'/bills/[id]'>) {
                 </li>
               ))}
             </ul>
-            <div className="flex items-center justify-between border-t px-4 py-3 sm:px-5">
-              <span className="text-sm font-medium">Total</span>
-              <span className="text-lg font-semibold tabular-nums">{rupees(bill.total_paise)}</span>
+            <div className="space-y-1.5 border-t px-4 py-3 text-sm sm:px-5">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Parts</span>
+                <span className="tabular-nums">{rupeesPrecise(bill.total_paise)}</span>
+              </div>
+              {bill.processing_fee_paise > 0 ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">
+                    Payment processing ({(paymentFeeBps() / 100).toFixed(1)}%)
+                  </span>
+                  <span className="tabular-nums">+{rupeesPrecise(bill.processing_fee_paise)}</span>
+                </div>
+              ) : null}
+              <div className="flex items-center justify-between border-t pt-1.5 font-medium">
+                <span>{bill.processing_fee_paise > 0 ? 'Customer pays' : 'Total'}</span>
+                <span className="text-lg font-semibold tabular-nums">
+                  {rupeesPrecise(chargedPaise)}
+                </span>
+              </div>
+              {bill.processing_fee_paise > 0 ? (
+                <p className="pt-1 text-xs text-muted-foreground">
+                  The shop keeps {rupeesPrecise(bill.total_paise)} — the surcharge covers what
+                  Razorpay deducts, so the listed price is what you actually bank.
+                </p>
+              ) : null}
             </div>
           </section>
         </div>

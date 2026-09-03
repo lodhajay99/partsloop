@@ -97,6 +97,39 @@ export function platformFeePaise(amountPaise: number): number {
   return Math.round((amountPaise * platformFeeBps()) / 10_000);
 }
 
+/**
+ * Razorpay's processing fee, in basis points, passed on to whoever is paying.
+ *
+ * 260 bps ≈ what Razorpay actually deducts on a standard card payment: about
+ * 2.2% plus 18% GST charged on that fee. Their real rate varies by payment
+ * method and by what you have negotiated, so this is an estimate the shop can
+ * tune with PAYMENT_FEE_BPS rather than a figure read back from Razorpay.
+ *
+ * Set PAYMENT_FEE_BPS=0 to absorb the cost instead of passing it on — see the
+ * note in the README about surcharging rules in India.
+ */
+const DEFAULT_PAYMENT_FEE_BPS = 260;
+
+export function paymentFeeBps(): number {
+  const raw = process.env.PAYMENT_FEE_BPS?.trim();
+  if (!raw) return DEFAULT_PAYMENT_FEE_BPS;
+
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 && value <= 10_000
+    ? value
+    : DEFAULT_PAYMENT_FEE_BPS;
+}
+
+/**
+ * The surcharge added on top of the goods price, in paise.
+ *
+ * Only ever applied to a Razorpay payment. Cash has no processor to reimburse,
+ * and charging for one would be inventing a fee.
+ */
+export function paymentFeePaise(amountPaise: number): number {
+  return Math.round((amountPaise * paymentFeeBps()) / 10_000);
+}
+
 export class RazorpayError extends Error {
   readonly status: number;
   readonly body: unknown;

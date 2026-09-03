@@ -59,6 +59,8 @@ export interface Transaction {
   quantity: number;
   amount_paise: number;
   platform_fee_paise: number;
+  /** Razorpay's cut, added on top for the buyer. Never the seller's revenue. */
+  processing_fee_paise: number;
   razorpay_order_id: string | null;
   razorpay_payment_id: string | null;
   razorpay_payment_link_id: string | null;
@@ -93,7 +95,10 @@ export interface Bill {
   id: string;
   shop_id: string;
   bill_number: number;
+  /** Goods subtotal. The customer is charged this plus processing_fee_paise. */
   total_paise: number;
+  /** Razorpay's cut, passed to the customer. Always 0 on a cash bill. */
+  processing_fee_paise: number;
   status: BillStatus;
   razorpay_order_id: string | null;
   razorpay_payment_link_id: string | null;
